@@ -23,22 +23,49 @@ last_move_time = time.time()
 last_data_received = time.time()
 
 def parse_ftms(data: bytearray):
-    # Octet 2 : effort instantané BRUT
-    effort = data[2]
 
-    # Octet 3 : strokes cumulés
-    strokes = data[3]
+    # Cas 1 : Format fixe 20 octets (JOROTO / OEM chinois)
+    if len(data) == 20:
+        effort = data[2]
+        strokes = int.from_bytes(data[3:5], "little")
+        distance = int.from_bytes(data[5:7], "little")
+        calories = data[12]
+        active_time = int.from_bytes(data[18:20], "little")
 
-    # Octets 5–6 : distance cumulée (m)
-    distance = int.from_bytes(data[5:7], "little")
+        return distance, active_time, effort, strokes, calories
 
-    # Octet 12 : calories brûlées
-    calories = data[12]
+    # Cas 2 : FTMS standard (flags dynamiques)
+    flags = int.from_bytes(data[0:2], "little")
+    offset = 2
 
-    # Octets 18–19 : temps actif matériel (s)
-    active_time = int.from_bytes(data[18:20], "little")
+    stroke_rate = data[offset]
+    offset += 1
 
-    return distance, active_time, effort, strokes, calories
+    stroke_count = int.from_bytes(data[offset:offset+2], "little")
+    offset += 2
+
+    total_distance = None
+    total_energy = None
+    elapsed_time = None
+    power = None
+
+    if flags & (1 << 2):
+        total_distance = int.from_bytes(data[offset:offset+3], "little")
+        offset += 3
+
+    if flags & (1 << 5):
+        power = int.from_bytes(data[offset:offset+2], "little", signed=True)
+        offset += 2
+
+    if flags & (1 << 7):
+        total_energy = int.from_bytes(data[offset:offset+2], "little")
+        offset += 2
+
+    if flags & (1 << 12):
+        elapsed_time = int.from_bytes(data[offset:offset+2], "little")
+        offset += 2
+
+    return total_distance, elapsed_time, power, stroke_count, total_energy
 
 
 
