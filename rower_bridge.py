@@ -24,48 +24,104 @@ last_data_received = time.time()
 
 def parse_ftms(data: bytearray):
 
-    # Cas 1 : Format fixe 20 octets (JOROTO / OEM chinois)
+    result = {}
+
+    # -----------------------------
+    # CAS OEM 20 BYTES FIXE
+    # -----------------------------
     if len(data) == 20:
-        effort = data[2]
-        strokes = int.from_bytes(data[3:5], "little")
-        distance = int.from_bytes(data[5:7], "little")
-        calories = data[12]
-        active_time = int.from_bytes(data[18:20], "little")
+        result["format"] = "OEM_20B"
 
-        return distance, active_time, effort, strokes, calories
+        result["stroke_rate"] = data[2] / 2.0
+        result["stroke_count"] = int.from_bytes(data[3:5], "little")
+        result["total_distance"] = int.from_bytes(data[5:7], "little")
+        result["calories"] = data[12]
+        result["elapsed_time"] = int.from_bytes(data[18:20], "little")
 
-    # Cas 2 : FTMS standard (flags dynamiques)
+        return result
+
+    # -----------------------------
+    # FTMS STANDARD
+    # -----------------------------
+    result["format"] = "FTMS"
+
     flags = int.from_bytes(data[0:2], "little")
+    result["flags_hex"] = f"0x{flags:04X}"
+
     offset = 2
 
-    stroke_rate = data[offset]
+    # Champs obligatoires
+    result["stroke_rate"] = data[offset] / 2.0
     offset += 1
 
-    stroke_count = int.from_bytes(data[offset:offset+2], "little")
+    result["stroke_count"] = int.from_bytes(data[offset:offset+2], "little")
     offset += 2
 
-    total_distance = None
-    total_energy = None
-    elapsed_time = None
-    power = None
+    # Champs optionnels dynamiques
 
-    if flags & (1 << 2):
-        total_distance = int.from_bytes(data[offset:offset+3], "little")
+    if flags & (1 << 1):  # Average Stroke Rate
+        result["avg_stroke_rate"] = data[offset] / 2.0
+        offset += 1
+
+    if flags & (1 << 2):  # Total Distance
+        result["total_distance"] = int.from_bytes(data[offset:offset+3], "little")
         offset += 3
 
-    if flags & (1 << 5):
-        power = int.from_bytes(data[offset:offset+2], "little", signed=True)
+    if flags & (1 << 3):  # Instantaneous Pace
+        result["inst_pace"] = int.from_bytes(data[offset:offset+2], "little")
         offset += 2
 
-    if flags & (1 << 7):
-        total_energy = int.from_bytes(data[offset:offset+2], "little")
+    if flags & (1 << 4):  # Average Pace
+        result["avg_pace"] = int.from_bytes(data[offset:offset+2], "little")
         offset += 2
 
-    if flags & (1 << 12):
-        elapsed_time = int.from_bytes(data[offset:offset+2], "little")
+    if flags & (1 << 5):  # Instantaneous Power
+        result["inst_power"] = int.from_bytes(
+            data[offset:offset+2], "little", signed=True
+        )
         offset += 2
 
-    return total_distance, elapsed_time, power, stroke_count, total_energy
+    if flags & (1 << 6):  # Average Power
+        result["avg_power"] = int.from_bytes(
+            data[offset:offset+2], "little", signed=True
+        )
+        offset += 2
+
+    if flags & (1 << 7):  # Resistance Level
+        result["resistance"] = data[offset]
+        offset += 1
+
+    if flags & (1 << 8):  # Total Energy
+        result["total_energy"] = int.from_bytes(data[offset:offset+2], "little")
+        offset += 2
+
+    if flags & (1 << 9):  # Energy per Hour
+        result["energy_per_hour"] = int.from_bytes(data[offset:offset+2], "little")
+        offset += 2
+
+    if flags & (1 << 10):  # Energy per Minute
+        result["energy_per_min"] = data[offset]
+        offset += 1
+
+    if flags & (1 << 11):  # Elapsed Time
+        result["elapsed_time"] = int.from_bytes(data[offset:offset+2], "little")
+        offset += 2
+
+    if flags & (1 << 12):  # Remaining Time
+        result["remaining_time"] = int.from_bytes(data[offset:offset+2], "little")
+        offset += 2
+
+    if flags & (1 << 13):  # Heart Rate
+        result["heart_rate"] = data[offset]
+        offset += 1
+
+    if flags & (1 << 14):  # MET
+        result["met"] = data[offset] / 10.0
+        offset += 1
+
+    result["packet_length"] = len(data)
+
+    return result
 
 
 
@@ -98,8 +154,22 @@ async def connect_and_stream():
                 async def on_data(_, data):
                     global last_data_received
                     last_data_received = time.time()  # Update timestamp on each frame
-                    d, t, e, s, cal = parse_ftms(data)
-                    msg = f"dist={d};time={t};effort={e};strokes={s};calories={cal}"
+                    parsed = parse_ftms(data)
+
+                    # Affichage console complet
+                    print("---- FRAME ----")
+                    for k, v in parsed.items():
+                        print(f"{k}: {v}")
+
+                    # Envoi bridge (valeurs sécurisées)
+                    dist = parsed.get("total_distance", 0)
+                    time_val = parsed.get("elapsed_time", 0)
+                    power = parsed.get("inst_power", 0)
+                    strokes = parsed.get("stroke_count", 0)
+                    cal = parsed.get("total_energy", 0)
+
+                    msg = f"dist={dist};time={time_val};effort={power};strokes={strokes};calories={cal}"
+                    sock.sendto(msg.encode(), (UDP_IP, UDP_PORT))
                     sock.sendto(msg.encode(), (UDP_IP, UDP_PORT))
                     print(msg)
 
