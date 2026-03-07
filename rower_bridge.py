@@ -34,9 +34,30 @@ def parse_ftms(data: bytearray):
 
         result["stroke_rate"] = data[2] / 2.0
         result["stroke_count"] = int.from_bytes(data[3:5], "little")
-        result["total_distance"] = int.from_bytes(data[5:7], "little")
-        result["calories"] = data[12]
+        result["total_distance"] = int.from_bytes(data[5:8], "little")
+        result["inst_pace"] = int.from_bytes(data[8:10], "little")
+        result["inst_power"] = int.from_bytes(data[10:12], "little", signed=True)
+        result["total_energy"] = data[12]
         result["elapsed_time"] = int.from_bytes(data[18:20], "little")
+
+        return result
+    
+    # -----------------------------
+    # CAS OEM 25 BYTES FIXE
+    # -----------------------------
+    if len(data) == 25:
+        result["format"] = "OEM_25B"
+
+        result["stroke_rate"] = data[2] / 2.0
+        result["stroke_count"] = int.from_bytes(data[3:5], "little")
+        result["avg_stroke_rate"] = data[5] / 2.0
+        result["total_distance"] = int.from_bytes(data[6:9], "little")
+        result["inst_pace"] = int.from_bytes(data[9:11], "little")
+        result["avg_pace"] = int.from_bytes(data[11:13], "little")
+        result["inst_power"] = int.from_bytes(data[13:15], "little", signed=True)
+        result["avg_power"] = int.from_bytes(data[15:17], "little", signed=True)
+        result["total_energy"] = int.from_bytes(data[17:19], "little")
+        result["elapsed_time"] = int.from_bytes(data[23:25], "little")
 
         return result
 
@@ -156,11 +177,6 @@ async def connect_and_stream():
                     last_data_received = time.time()  # Update timestamp on each frame
                     parsed = parse_ftms(data)
 
-                    # Affichage console complet
-                    print("---- FRAME ----")
-                    for k, v in parsed.items():
-                        print(f"{k}: {v}")
-
                     # Envoi bridge (valeurs sécurisées)
                     dist = parsed.get("total_distance", 0)
                     time_val = parsed.get("elapsed_time", 0)
@@ -169,7 +185,6 @@ async def connect_and_stream():
                     cal = parsed.get("total_energy", 0)
 
                     msg = f"dist={dist};time={time_val};effort={power};strokes={strokes};calories={cal}"
-                    sock.sendto(msg.encode(), (UDP_IP, UDP_PORT))
                     sock.sendto(msg.encode(), (UDP_IP, UDP_PORT))
                     print(msg)
 
