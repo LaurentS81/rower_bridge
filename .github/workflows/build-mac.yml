@@ -25,15 +25,18 @@ jobs:
 
     - name: Build Intel version
       run: |
-        pyinstaller --onefile rower_bridge.py --distpath dist_intel
+        pyinstaller --onefile rower_bridge.py \
+        --target-arch x86_64 \
+        --distpath dist_intel
 
     - name: Nettoyage
-      run: |
-        rm -rf build
+      run: rm -rf build
 
     - name: Build Apple Silicon version
       run: |
-        arch -arm64 pyinstaller --onefile rower_bridge.py --distpath dist_arm
+        pyinstaller --onefile rower_bridge.py \
+        --target-arch arm64 \
+        --distpath dist_arm
 
     - name: Créer le binaire universel
       run: |
