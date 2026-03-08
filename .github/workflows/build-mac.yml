@@ -16,7 +16,7 @@ jobs:
     - name: Installer Python
       uses: actions/setup-python@v5
       with:
-        python-version: 3.9.1
+        python-version: "3.9"
 
     - name: Installer les dépendances
       run: |
